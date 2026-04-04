@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [ master ]
 
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ${{ matrix.os }}
@@ -14,18 +17,10 @@ jobs:
         os: [ubuntu-latest, windows-latest]
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-dotnet@v5
         with:
-          dotnet-version: |
-            8.x
-            9.x
-
-      - name: Build
-        run: dotnet build ./src/FortniteReplayDecompressor.sln --configuration Release
-
-      - name: Test
-        run: dotnet test ./src/FortniteReplayDecompressor.sln /p:CollectCoverage=true /p:CoverletOutputFormat="lcov" /p:CoverletOutput="../../coverage/lcov.info" /p:Exclude=\"[Fortnite*]*.Models.*\" --no-build --configuration Release
+          dotnet-version: 10.x
+      - run: dotnet restore
+      - run: dotnet build --configuration Release --no-restore
+      - run: dotnet test --coverage --report-github
