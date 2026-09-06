@@ -4,31 +4,30 @@ on:
   push:
     branches: [ master ]
 
-jobs:
-  check_skip:
-    runs-on: ubuntu-latest
-    if: github.event_name == 'push' && !contains(github.event.head_commit.message, '#ignore')
-    steps:
-      - run: |
-          cat <<'MESSAGE'
-            github.event_name: '${{ github.event_name }}'
-            github.event.head_commit.message: '${{ github.event.head_commit.message }}'
-          MESSAGE
+permissions:
+  contents: write
 
-  build:
-    needs: check_skip
+jobs:
+  build_and_publish:
     runs-on: ubuntu-latest
+    if: !contains(github.event.head_commit.message, '#ignore')
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-dotnet@v5
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 10.x
+
       - run: dotnet build --configuration Release
-      - run: dotnet test
+      - run: dotnet test --configuration Release
 
       - name: Get next version
         id: versioning
-        uses: anothrNick/github-tag-action@1.52.0
+        uses: anothrNick/github-tag-action@v1.71.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DEFAULT_BUMP: patch
@@ -36,50 +35,51 @@ jobs:
           DRY_RUN: true
           PRERELEASE: false
           RELEASE_BRANCHES: master
-          VERBOSE: true
-
-      - name: Create PackageVersion
-        id: packageversion
-        run: echo ::set-output name=tag::${{ steps.versioning.outputs.new_tag }}
 
       - name: Pack OozSharp
-        run: dotnet pack ./src/OozSharp/OozSharp.csproj -c Release -p:PackageVersion=${{ steps.packageversion.outputs.tag }} --output ./OozSharp
+        run: dotnet pack ./src/OozSharp/OozSharp.csproj -c Release -p:PackageVersion=${{ steps.versioning.outputs.new_tag }} --output ./OozSharp
+
       - name: Publish OozSharp
         run: dotnet nuget push ./OozSharp/*.nupkg -s https://api.nuget.org/v3/index.json -k ${{ secrets.NUGET_TOKEN }} --no-symbols
 
-      - name: Update Unreal.Encryption
-        run: sed -i "s/ProjectReference Include=\"..\\\OozSharp\\\OozSharp.csproj\"/PackageReference Include=\"OozSharp\" Version=\"${{ steps.packageversion.outputs.tag }}\"/" ./src/Unreal.Encryption/Unreal.Encryption.csproj
+      - name: Update Unreal.Encryption Reference
+        run: sed -i 's/ProjectReference Include="..\\OozSharp\\OozSharp.csproj"/PackageReference Include="OozSharp" Version="${{ steps.versioning.outputs.new_tag }}"/' ./src/Unreal.Encryption/Unreal.Encryption.csproj
+
       - name: Pack Unreal.Encryption
-        uses: nick-invision/retry@v1
+        uses: nick-invision/retry@v3
         with:
           timeout_minutes: 15
           max_attempts: 3
           retry_wait_seconds: 300
-          command: dotnet nuget locals http-cache -c && dotnet pack ./src/Unreal.Encryption/Unreal.Encryption.csproj -c Release -p:PackageVersion=${{ steps.packageversion.outputs.tag }} --output ./Unreal.Encryption
+          command: dotnet nuget locals http-cache -c && dotnet pack ./src/Unreal.Encryption/Unreal.Encryption.csproj -c Release -p:PackageVersion=${{ steps.versioning.outputs.new_tag }} --output ./Unreal.Encryption
+
       - name: Publish Unreal.Encryption
         run: dotnet nuget push ./Unreal.Encryption/*.nupkg -s https://api.nuget.org/v3/index.json -k ${{ secrets.NUGET_TOKEN }} --no-symbols
 
       - name: Pack Unreal.Core
-        run: dotnet pack ./src/Unreal.Core/Unreal.Core.csproj -c Release -p:PackageVersion=${{ steps.packageversion.outputs.tag }} --output ./Unreal.Core
+        run: dotnet pack ./src/Unreal.Core/Unreal.Core.csproj -c Release -p:PackageVersion=${{ steps.versioning.outputs.new_tag }} --output ./Unreal.Core
+
       - name: Publish Unreal.Core
         run: dotnet nuget push ./Unreal.Core/*.nupkg -s https://api.nuget.org/v3/index.json -k ${{ secrets.NUGET_TOKEN }} --no-symbols
 
-      - name: Update FortniteReplayReader
-        run: sed -i "s/ProjectReference Include=\"..\\\Unreal.Core\\\Unreal.Core.csproj\"/PackageReference Include=\"Unreal.Core\" Version=\"${{ steps.packageversion.outputs.tag }}\"/" ./src/FortniteReplayReader/FortniteReplayReader.csproj
-      - name: Update Unreal.Core
-        run: sed -i "s/ProjectReference Include=\"..\\\Unreal.Encryption\\\Unreal.Encryption.csproj\"/PackageReference Include=\"Unreal.Encryption\" Version=\"${{ steps.packageversion.outputs.tag }}\"/" ./src/FortniteReplayReader/FortniteReplayReader.csproj
+      - name: Update FortniteReplayReader References
+        run: |
+          sed -i 's/ProjectReference Include="..\\Unreal.Core\\Unreal.Core.csproj"/PackageReference Include="Unreal.Core" Version="${{ steps.versioning.outputs.new_tag }}"/' ./src/FortniteReplayReader/FortniteReplayReader.csproj
+          sed -i 's/ProjectReference Include="..\\Unreal.Encryption\\Unreal.Encryption.csproj"/PackageReference Include="Unreal.Encryption" Version="${{ steps.versioning.outputs.new_tag }}"/' ./src/FortniteReplayReader/FortniteReplayReader.csproj
+
       - name: Pack FortniteReplayReader
-        uses: nick-invision/retry@v1
+        uses: nick-invision/retry@v3
         with:
           timeout_minutes: 15
           max_attempts: 3
           retry_wait_seconds: 300
-          command: dotnet nuget locals http-cache -c && dotnet pack ./src/FortniteReplayReader/FortniteReplayReader.csproj -c Release -p:PackageVersion=${{ steps.packageversion.outputs.tag }} --output ./FortniteReplayReader
+          command: dotnet nuget locals http-cache -c && dotnet pack ./src/FortniteReplayReader/FortniteReplayReader.csproj -c Release -p:PackageVersion=${{ steps.versioning.outputs.new_tag }} --output ./FortniteReplayReader
+
       - name: Publish FortniteReplayReader
         run: dotnet nuget push ./FortniteReplayReader/*.nupkg -s https://api.nuget.org/v3/index.json -k ${{ secrets.NUGET_TOKEN }} --no-symbols
 
       - name: Bump version and push tag
-        uses: anothrNick/github-tag-action@1.52.0
+        uses: anothrNick/github-tag-action@v1.71.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DEFAULT_BUMP: patch
