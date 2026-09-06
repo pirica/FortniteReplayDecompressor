@@ -515,6 +515,7 @@ public abstract class ReplayReader<T> where T : Replay, new()
         _cmdReader.EngineNetworkVersion = header.EngineNetworkVersion;
         _cmdReader.NetworkVersion = header.NetworkVersion;
         _cmdReader.ReplayHeaderFlags = header.Flags;
+        _cmdReader.NetworkReplayVersion = archive.NetworkReplayVersion;
     }
 
 

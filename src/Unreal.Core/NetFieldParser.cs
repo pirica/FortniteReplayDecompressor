@@ -333,7 +333,13 @@ public class NetFieldParser
             RepLayoutCmdType.RepMovement => netFieldInfo.MovementAttribute != null ? netBitReader.SerializeRepMovement(
                 locationQuantizationLevel: netFieldInfo.MovementAttribute.LocationQuantizationLevel,
                 rotationQuantizationLevel: netFieldInfo.MovementAttribute.RotationQuantizationLevel,
-                velocityQuantizationLevel: netFieldInfo.MovementAttribute.VelocityQuantizationLevel) : netBitReader.SerializeRepMovement(),
+                velocityQuantizationLevel: netFieldInfo.MovementAttribute.VelocityQuantizationLevel)
+                // TODO: support custom FEngineNetworkCustomVersion::Guid
+                : netBitReader.SerializeRepMovement(
+                    rotationQuantizationLevel: (netBitReader.NetworkReplayVersion != null
+                        && (netBitReader.NetworkReplayVersion.Changelist >= 54618515u
+                            || (netBitReader.NetworkReplayVersion.Branch?.Contains("+Release-41.") ?? false)))
+                        ? RotatorQuantization.ShortComponents : RotatorQuantization.ByteComponents),
             _ => ReadDataType(netFieldInfo.Attribute.Type, netBitReader, netFieldInfo.PropertyInfo.PropertyType),
         };
 
