@@ -2104,6 +2104,12 @@ public abstract class ReplayReader<T> where T : Replay, new()
                 bunch.Archive = bitReader;
             }
 
+            if (bitReader.IsError)
+            {
+                _logger?.LogWarning("ReceivedPacket: bunch ({bunchDataBits} bits) overflows packet {packetIndex}, aborting packet.", bunchDataBits, packetIndex);
+                break;
+            }
+
             bunchIndex++;
 
             if (bunch.bHasPackageMapExports)
